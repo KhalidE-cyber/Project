@@ -582,7 +582,25 @@ const goldIcon  = L.divIcon({
 });
 
 
-const purpleIcon = pinIcon('#7c3aed', 28, 36);
+const purpleIcon = pinIcon('#7c3aed', 28, 36);  // both genders
+const blueIcon   = pinIcon('#2563eb', 28, 36);  // male
+const roseIcon   = pinIcon('#db2777', 28, 36);  // female
+
+function lessonIcon(gender) {
+    const g = (gender || '').toString().trim().toLowerCase();
+    if (g === 'male'   || g === 'ذكور' || g === 'رجال') return blueIcon;
+    if (g === 'female' || g === 'إناث' || g === 'نساء') return roseIcon;
+    return purpleIcon;
+}
+
+function genderBadge(gender) {
+    const g = (gender || '').toString().trim().toLowerCase();
+    if (g === 'male'   || g === 'ذكور' || g === 'رجال')
+        return '<span style="background:#dbeafe;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700"><i class="fa-solid fa-person" style="margin-left:3px"></i>للرجال</span>';
+    if (g === 'female' || g === 'إناث' || g === 'نساء')
+        return '<span style="background:#fce7f3;color:#be185d;border:1px solid #fbcfe8;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700"><i class="fa-solid fa-person-dress" style="margin-left:3px"></i>للنساء</span>';
+    return '<span style="background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe;border-radius:999px;padding:1px 8px;font-size:10px;font-weight:700"><i class="fa-solid fa-people-group" style="margin-left:3px"></i>للجميع</span>';
+}
 const MAIN_OFFICE = [24.811522, 46.639743];
 // ═══════════════════════════════════════════════════
 // HELPERS
@@ -991,23 +1009,39 @@ function renderLessons(rows) {
     (rows || []).forEach(function(row) {
         const lat = parseFloat(row['mosque_lat']);
         const lng = parseFloat(row['mosque_lng']);
-        if (isNaN(lat) || isNaN(lng)) return;
+        const isOnline = isNaN(lat) || isNaN(lng);
+        // Online lessons → treat as female
+        const gender = isOnline ? 'female' : (row['gender'] || '').toString().trim();
+        if (isOnline) {
+            // Attach online lessons to the main office marker area (skip map pin)
+            return;
+        }
         const key = lat.toFixed(5) + ',' + lng.toFixed(5);
         if (!mosqueMap[key]) {
             mosqueMap[key] = {
                 lat, lng,
                 name: (row['mosque'] || 'مسجد').trim(),
+                gender: gender,
                 lessons: []
             };
         }
+        // If mosque already exists but a lesson has different gender → upgrade to 'both'
+        if (mosqueMap[key].gender !== gender) mosqueMap[key].gender = 'both';
         mosqueMap[key].lessons.push({
-            title: (row['lesson_title'] || '').trim(),
-            date:  (row['date']         || '').trim()
+            title:  (row['lesson_title'] || '').trim(),
+            date:   (row['date']         || '').trim(),
+            gender: gender
         });
     });
 
     Object.values(mosqueMap).forEach(function(m) {
         count++;
+        const accentColor = m.gender === 'male' || m.gender === 'ذكور' || m.gender === 'رجال'
+            ? '#2563eb'
+            : m.gender === 'female' || m.gender === 'إناث' || m.gender === 'نساء'
+            ? '#db2777'
+            : '#7c3aed';
+
         const lessonsHTML = m.lessons.map(function(l) {
             return `<div class="py-2 border-b border-gray-100 last:border-0">
                 <p class="font-bold text-gray-800 text-xs">${l.title}</p>
@@ -1016,19 +1050,22 @@ function renderLessons(rows) {
         }).join('');
 
         const popup = `<div class="bg-white rounded-xl overflow-hidden">
-            <div class="h-3 w-full" style="background:#7c3aed"></div>
+            <div class="h-3 w-full" style="background:${accentColor}"></div>
             <div class="p-4">
                 <h3 class="font-extrabold text-gray-900 text-sm mb-2 pb-2 border-b border-gray-100 flex items-center gap-2">
-                    <i class="fa-solid fa-mosque" style="color:#7c3aed;font-size:12px"></i>${m.name}
+                    <i class="fa-solid fa-mosque" style="color:${accentColor};font-size:12px"></i>${m.name}
                 </h3>
-                <p class="text-[10px] font-bold mb-2" style="color:#7c3aed">
-                    <i class="fa-solid fa-list ml-1"></i>${m.lessons.length} محاضرة/كلمة مقررة
-                </p>
+                <div class="flex items-center justify-between mb-2">
+                    <p class="text-[10px] font-bold" style="color:${accentColor}">
+                        <i class="fa-solid fa-list ml-1"></i>${m.lessons.length} محاضرة/كلمة
+                    </p>
+                    ${genderBadge(m.gender)}
+                </div>
                 <div class="max-h-48 overflow-y-auto">${lessonsHTML}</div>
             </div>
         </div>`;
 
-        const mk = L.marker([m.lat, m.lng], { icon: purpleIcon });
+        const mk = L.marker([m.lat, m.lng], { icon: lessonIcon(m.gender) });
         mk.bindPopup(popup, { maxWidth: 290 });
         mk.on('click', (e) => L.DomEvent.stopPropagation(e));
         lessonCluster.addLayer(mk);
