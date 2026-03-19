@@ -275,7 +275,7 @@
         /* ── Dark Mode Button ── */
         #dark-mode-btn {
             position: fixed;
-            top: 220px;   /* below Leaflet zoom control */
+            top: 140px;
             left: 14px;
             z-index: 5000;
             width: 42px;
@@ -450,6 +450,15 @@
                     <div>
                         <span class="text-white/60 text-[8px] font-bold block leading-none mb-0.5">مسلمون جدد</span>
                         <span id="newmuslims-counter" class="text-white font-extrabold text-xs leading-none shimmer">٠</span>
+                    </div>
+                </div>
+
+                <!-- Outreach beneficiaries (filled by JS) -->
+                <div id="hero-outreach-row" class="flex items-center gap-1 bg-white/10 border border-white/20 rounded-lg px-2 py-1" style="display:none!important">
+                    <i class="fa-solid fa-signal text-blue-300 text-[10px]"></i>
+                    <div>
+                        <span class="text-white/60 text-[8px] font-bold block leading-none mb-0.5">مستفيدو الدعوة</span>
+                        <span id="hero-outreach-total" class="text-white font-extrabold text-xs leading-none">٠</span>
                     </div>
                 </div>
 
@@ -746,8 +755,14 @@ const FB = {
 // ═══════════════════════════════════════════════════
 function renderIftar(rows) {
     let total = 0;
+    // new_muslims is now a GLOBAL count stored in a single sheet cell,
+    // not per-center. We pick the first non-zero value from any row.
     let totalNewMuslims = 0;
-    
+    rows.forEach(function(r) {
+        const v = parseInt(r['new_muslims']) || 0;
+        if (v > totalNewMuslims) totalNewMuslims = v;
+    });
+
     let listHTML = '';
 
     rows.forEach(function(row) {
@@ -757,13 +772,11 @@ function renderIftar(rows) {
         const daily = parseInt(row['daily_meals'])    || 0;
         const meals = parseInt(row['total_meals'])    || 0;
         const quran = parseInt(row['quran_sessions']) || 0;
-        const newM  = parseInt(row['new_muslims'])    || 0;
         const img   = driveUrl(row['image_url']);
         const name  = (row['Center name'] || 'مركز تفطير').trim();
         const needSup = (row['need_support'] || '').toString().trim().toLowerCase();
         
         total += meals;
-        totalNewMuslims += newM;
 
         // Logic for "Awaiting Coverage" based on need_support column
         const isNeedingSupport = (needSup === 'yes' || needSup === 'yes ' || needSup.includes('نعم'));
@@ -789,11 +802,7 @@ function renderIftar(rows) {
         if (meals > 0) stats += statBox('إجمالي الوجبات', meals.toLocaleString('ar-SA'), 'bg-blue-50 border-blue-100',   'text-brand-blue', true);
         if (quran > 0) stats += statBox('الدروس المصاحبة',   quran,                          'bg-green-50 border-green-100', 'text-brand-green',false);
 
-        const newBanner = newM > 0
-            ? `<div class="mt-2 bg-green-50 border border-green-100 p-2.5 rounded-xl flex justify-between items-center">
-                   <span class="text-xs text-brand-green font-bold"><i class="fa-solid fa-user-plus ml-1"></i>مسلمون جدد</span>
-                   <span class="font-extrabold text-brand-green text-lg">${newM}</span>
-               </div>` : '';
+        const newBanner = ''; // new_muslims is global — not per-center
 
         const supportBanner = isNeedingSupport 
             ? `<div class="mt-2 bg-orange-50 border border-orange-100 p-2.5 rounded-xl flex justify-between items-center">
@@ -894,12 +903,24 @@ function renderUmrah(rows) {
 // RENDER: MAIN OFFICE MARKER
 // ═══════════════════════════════════════════════════
 function renderMainOffice(rows) {
-    // Find the row(s) that have main office data
-    let clips = 0, pubs = 0, questions = 0, mediaLink = '';
+    // Reads: total_clips, clips_benificiaries,
+    //        total_publications, publication_benificiaries,
+    //        total_questions, question_benificiaries, media
+    let clips = 0, clipsBen = 0;
+    let pubs = 0, pubsBen = 0;
+    let questions = 0, qBen = 0;
+    let mediaLink = '';
+
     (rows || []).forEach(function(d) {
-        clips     += parseInt(d['total_clips'])         || 0;
-        pubs      += parseInt(d['total_publications'])  || 0;
-        questions += parseInt(d['total_questions'])     || 0;
+        const tc = parseInt(d['total_clips'])                || 0;
+        const cb = parseInt(d['clips_benificiaries'])        || 0;
+        const tp = parseInt(d['total_publications'])         || 0;
+        const pb = parseInt(d['publication_benificiaries'])  || 0;
+        const tq = parseInt(d['total_questions'])            || 0;
+        const qb = parseInt(d['question_benificiaries'])     || 0;
+        if (tc > clips)   { clips = tc; clipsBen = cb; }
+        if (tp > pubs)    { pubs  = tp; pubsBen  = pb; }
+        if (tq > questions){ questions = tq; qBen = qb; }
         if (!mediaLink && (d['media'] || '').trim() && d['media'].trim() !== '#')
             mediaLink = d['media'].trim();
     });
@@ -924,6 +945,16 @@ function renderMainOffice(rows) {
         ? `<a href="${mediaLink}" target="_blank" class="mt-3 block w-full text-center bg-blue-50 border border-blue-200 text-brand-blue font-bold text-sm py-2 rounded-xl hover:bg-blue-100 transition"><i class="fa-solid fa-play ml-1"></i>المحتوى الرقمي</a>`
         : '';
 
+    function actCard(icon, label, count, ben) {
+        if (!count) return '';
+        return `<div class="bg-blue-50 border border-blue-100 p-2 rounded-xl text-center">
+            <i class="fa-solid ${icon} text-brand-blue text-xs mb-1 block"></i>
+            <p class="text-gray-500 text-[9px] font-bold mb-0.5">${label}</p>
+            <p class="font-extrabold text-brand-blue text-base leading-none">${count}</p>
+            ${ben > 0 ? `<p class="text-[8px] text-gray-400 mt-0.5">مستفيد: <b class="text-brand-blue">${ben.toLocaleString('ar-SA')}</b></p>` : ''}
+        </div>`;
+    }
+
     const popup = `<div class="bg-white rounded-xl overflow-hidden">
         <div class="h-3 w-full" style="background:#1d4ed8"></div>
         <div class="p-4">
@@ -931,21 +962,9 @@ function renderMainOffice(rows) {
                 <i class="fa-solid fa-building text-brand-blue text-sm"></i>المشاريع الرقمية والإعلامية
             </h3>
             <div class="grid grid-cols-3 gap-2 mb-2">
-                ${clips > 0 ? `<div class="bg-blue-50 border border-blue-100 p-2 rounded-xl text-center">
-                    <i class="fa-solid fa-video text-brand-blue text-xs mb-1 block"></i>
-                    <p class="text-gray-500 text-[9px] font-bold mb-1">مقطع مرئي</p>
-                    <p class="font-extrabold text-brand-blue text-lg leading-none">${clips}</p>
-                </div>` : ''}
-                ${pubs > 0 ? `<div class="bg-blue-50 border border-blue-100 p-2 rounded-xl text-center">
-                    <i class="fa-solid fa-newspaper text-brand-blue text-xs mb-1 block"></i>
-                    <p class="text-gray-500 text-[9px] font-bold mb-1">منشور دعوي</p>
-                    <p class="font-extrabold text-brand-blue text-lg leading-none">${pubs}</p>
-                </div>` : ''}
-                ${questions > 0 ? `<div class="bg-blue-50 border border-blue-100 p-2 rounded-xl text-center">
-                    <i class="fa-solid fa-circle-question text-brand-blue text-xs mb-1 block"></i>
-                    <p class="text-gray-500 text-[9px] font-bold mb-1">سؤال يومي</p>
-                    <p class="font-extrabold text-brand-blue text-lg leading-none">${questions}</p>
-                </div>` : ''}
+                ${actCard('fa-video',           'مقطع مرئي',   clips,     clipsBen)}
+                ${actCard('fa-newspaper',       'منشور دعوي',  pubs,      pubsBen)}
+                ${actCard('fa-circle-question', 'سؤال يومي',   questions, qBen)}
             </div>
             ${mediaBtn}
         </div>
@@ -955,7 +974,11 @@ function renderMainOffice(rows) {
         .addTo(map)
         .bindPopup(popup, { maxWidth: 300 });
 
-    console.log('[مشكاة] ✅ Main office marker | clips:', clips, '| pubs:', pubs, '| q:', questions);
+    console.log('[مشكاة] ✅ Main office marker | clips:', clips, '(ben:', clipsBen, ') | pubs:', pubs, '(ben:', pubsBen, ') | q:', questions, '(ben:', qBen, ')');
+
+    // Expose totals for hero banner
+    window.__officeData = { clips, clipsBen, pubs, pubsBen, questions, qBen };
+    renderHeroBannerOutreach();
 }
 
 // ═══════════════════════════════════════════════════
@@ -1012,7 +1035,13 @@ function renderLessons(rows) {
     });
 
     if (count > 0) map.addLayer(lessonCluster);
-    console.log('[مشكاة] ✅ Lessons rendered | mosques:', count);
+
+    // Count total individual lessons (not mosques) for hero banner
+    const totalLessonItems = Object.values(mosqueMap).reduce((s, m) => s + m.lessons.length, 0);
+    window.__lessonCount = totalLessonItems || count;
+    renderHeroBannerOutreach();
+
+    console.log('[مشكاة] ✅ Lessons rendered | mosques:', count, '| total lessons:', window.__lessonCount);
 }
 
 // ═══════════════════════════════════════════════════
@@ -1053,6 +1082,39 @@ map.on('click', function(e) {
 // Iftar → renders markers + hides loading immediately.
 // Single fetch — one sheet contains everything.
 // ═══════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════
+// HERO BANNER: outreach row (Row 3)
+// Called after renderMainOffice and renderLessons set their data
+// ═══════════════════════════════════════════════════
+function showHeroItem(id, valId, value) {
+    if (!value) return;
+    const el = document.getElementById(id);
+    const vl = document.getElementById(valId);
+    if (el) { el.style.cssText = ''; }  // clear the display:none
+    if (vl) { vl.textContent = value.toLocaleString ? value.toLocaleString('ar-SA') : value; }
+}
+
+function renderHeroBannerOutreach() {
+    const d = window.__officeData || {};
+    const lessonCount = window.__lessonCount || 0;
+    const row = document.getElementById('hero-outreach-row');
+    const totalEl = document.getElementById('hero-outreach-total');
+    if (!row || !totalEl) return;
+
+    const total = (d.clipsBen   || d.clips     || 0)
+                + (d.pubsBen    || d.pubs      || 0)
+                + (d.qBen       || d.questions || 0)
+                + lessonCount;
+
+    if (!total) return;
+
+    row.style.cssText = '';
+    // Format as +123,000 in Arabic numerals
+    const formatted = '+' + total.toLocaleString('ar-SA');
+    totalEl.textContent = formatted;
+}
+
 const safetyTimer = setTimeout(hideLoading, 14000);
 
 fetchSheet(SHEET_URL, 'Center name', FB.iftar)
